@@ -215,8 +215,11 @@ export default function Dashboard() {
 
     setUrlProyecto('')
 
+    setMostrarModal(false)
+    limpiarFormulario()
+
     mostrarMensaje(
-      'URL del proyecto guardada correctamente.',
+      'Proyecto guardado correctamente.',
       'success'
     )
   }
@@ -303,7 +306,7 @@ export default function Dashboard() {
 
     /*
      * Si el usuario colocó una URL,
-     * primero guardamos el proyecto por URL.
+     * guardamos el proyecto directamente.
      */
     if (urlProyecto.trim()) {
       guardarProyectoURL()
@@ -637,6 +640,10 @@ export default function Dashboard() {
       return contenido.includes(texto)
     })
   }, [proyectosURL, busqueda])
+
+  const hayProyectos =
+    proyectosFiltrados.length > 0 ||
+    proyectosURLFiltrados.length > 0
 
   const almacenamientoUsado = useMemo(() => {
     return proyectos.reduce(
@@ -998,7 +1005,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* PROYECTOS ZIP */}
+        {/* TODOS LOS PROYECTOS */}
 
         <section className="projects-section">
 
@@ -1057,7 +1064,7 @@ export default function Dashboard() {
 
             </div>
 
-          ) : proyectosFiltrados.length === 0 ? (
+          ) : !hayProyectos ? (
 
             <div className="empty-card">
 
@@ -1094,6 +1101,8 @@ export default function Dashboard() {
           ) : (
 
             <div className="projects-grid">
+
+              {/* PROYECTOS ZIP */}
 
               {proyectosFiltrados.map(
                 (proyecto) => (
@@ -1259,40 +1268,7 @@ export default function Dashboard() {
                 )
               )}
 
-            </div>
-
-          )}
-
-        </section>
-
-        {/* PROYECTOS POR URL */}
-
-        {proyectosURLFiltrados.length > 0 && (
-
-          <section className="projects-section">
-
-            <div className="projects-toolbar">
-
-              <div>
-
-                <span className="section-label">
-                  PROYECTOS EXTERNOS
-                </span>
-
-                <h3>
-                  Proyectos mediante URL
-                </h3>
-
-                <p>
-                  Proyectos que agregaste mediante
-                  un enlace.
-                </p>
-
-              </div>
-
-            </div>
-
-            <div className="projects-grid">
+              {/* PROYECTOS POR URL */}
 
               {proyectosURLFiltrados.map(
                 (proyecto) => (
@@ -1312,7 +1288,7 @@ export default function Dashboard() {
 
                       <div className="project-status">
                         <span></span>
-                        URL
+                        Activo
                       </div>
 
                     </div>
@@ -1424,9 +1400,9 @@ export default function Dashboard() {
 
             </div>
 
-          </section>
+          )}
 
-        )}
+        </section>
 
       </main>
 
@@ -1639,9 +1615,7 @@ export default function Dashboard() {
 
                   </div>
 
-                  {/* =========================================
-                      VERCEL
-                      ========================================= */}
+                  {/* VERCEL */}
 
                   <div className="form-group">
 
@@ -1683,9 +1657,7 @@ export default function Dashboard() {
 
                   </div>
 
-                  {/* =========================================
-                      SOLO URL
-                      ========================================= */}
+                  {/* URL */}
 
                   <div className="form-group">
 
@@ -1735,9 +1707,7 @@ export default function Dashboard() {
 
                   </div>
 
-                  {/* =========================================
-                      ARCHIVO ZIP
-                      ========================================= */}
+                  {/* ARCHIVO ZIP */}
 
                   <div className="form-group">
 
