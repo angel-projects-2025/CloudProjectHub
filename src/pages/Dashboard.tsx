@@ -14,6 +14,7 @@ import {
   Star,
   FolderKanban,
   LogOut,
+  Globe,
 } from 'lucide-react'
 
 import { supabase } from '../lib/supabase'
@@ -30,19 +31,35 @@ import {
 
 import './Dashboard.css'
 
+interface ProyectoURL {
+  id: number
+  nombre: string
+  descripcion: string
+  url: string
+  categoria: string
+  etiquetas: string[]
+  created_at: string
+  tipo: 'url'
+}
+
 export default function Dashboard() {
   const [proyectos, setProyectos] = useState<Proyecto[]>([])
   const [proyectosVercel, setProyectosVercel] = useState<
     ProyectoVercel[]
   >([])
 
+  const [proyectosURL, setProyectosURL] = useState<ProyectoURL[]>([])
+
   const [vercelProjectId, setVercelProjectId] = useState('')
+  const [urlProyecto, setUrlProyecto] = useState('')
 
   const [busqueda, setBusqueda] = useState('')
   const [mostrarModal, setMostrarModal] = useState(false)
+
   const [cargando, setCargando] = useState(true)
   const [cargandoVercel, setCargandoVercel] = useState(false)
   const [subiendo, setSubiendo] = useState(false)
+  const [progreso, setProgreso] = useState(0)
 
   const [mensaje, setMensaje] = useState('')
   const [tipoMensaje, setTipoMensaje] = useState<
@@ -58,7 +75,12 @@ export default function Dashboard() {
   useEffect(() => {
     cargarProyectos()
     cargarProyectosVercel()
+    cargarProyectosURL()
   }, [])
+
+  // ==============================
+  // PROYECTOS NORMALES
+  // ==============================
 
   async function cargarProyectos() {
     try {
@@ -96,6 +118,141 @@ export default function Dashboard() {
     }
   }
 
+  // ==============================
+  // PROYECTOS POR URL
+  // ==============================
+
+  function cargarProyectosURL() {
+    try {
+      const guardados = localStorage.getItem(
+        'cloudprojecthub_url_projects'
+      )
+
+      if (!guardados) {
+        setProyectosURL([])
+        return
+      }
+
+      const proyectosGuardados: ProyectoURL[] =
+        JSON.parse(guardados)
+
+      setProyectosURL(proyectosGuardados)
+    } catch (error) {
+      console.error(
+        'No se pudieron cargar los proyectos por URL:',
+        error
+      )
+
+      setProyectosURL([])
+    }
+  }
+
+  function guardarProyectosURL(
+    proyectosActualizados: ProyectoURL[]
+  ) {
+    localStorage.setItem(
+      'cloudprojecthub_url_projects',
+      JSON.stringify(proyectosActualizados)
+    )
+
+    setProyectosURL(proyectosActualizados)
+  }
+
+  function guardarProyectoURL() {
+    if (!urlProyecto.trim()) {
+      return
+    }
+
+    let urlValida: URL
+
+    try {
+      urlValida = new URL(urlProyecto.trim())
+    } catch {
+      mostrarMensaje(
+        'Ingresa una URL válida. Ejemplo: https://mi-proyecto.vercel.app',
+        'danger'
+      )
+
+      return
+    }
+
+    if (
+      urlValida.protocol !== 'http:' &&
+      urlValida.protocol !== 'https:'
+    ) {
+      mostrarMensaje(
+        'La URL debe comenzar con http:// o https://',
+        'danger'
+      )
+
+      return
+    }
+
+    const nuevoProyecto: ProyectoURL = {
+      id: Date.now(),
+      nombre:
+        nombre.trim() ||
+        urlValida.hostname.replace('www.', ''),
+      descripcion:
+        descripcion.trim() ||
+        'Proyecto agregado mediante URL.',
+      url: urlValida.toString(),
+      categoria,
+      etiquetas: etiquetas
+        .split(',')
+        .map((etiqueta) => etiqueta.trim())
+        .filter(Boolean),
+      created_at: new Date().toISOString(),
+      tipo: 'url',
+    }
+
+    const proyectosActualizados = [
+      nuevoProyecto,
+      ...proyectosURL,
+    ]
+
+    guardarProyectosURL(proyectosActualizados)
+
+    setUrlProyecto('')
+
+    mostrarMensaje(
+      'URL del proyecto guardada correctamente.',
+      'success'
+    )
+  }
+
+  function eliminarProyectoUrl(id: number) {
+    const confirmar = window.confirm(
+      '¿Seguro que deseas eliminar este proyecto?'
+    )
+
+    if (!confirmar) return
+
+    const proyectosActualizados =
+      proyectosURL.filter(
+        (proyecto) => proyecto.id !== id
+      )
+
+    guardarProyectosURL(proyectosActualizados)
+
+    mostrarMensaje(
+      'Proyecto eliminado correctamente.',
+      'success'
+    )
+  }
+
+  function abrirProyectoUrl(url: string) {
+    window.open(
+      url,
+      '_blank',
+      'noopener,noreferrer'
+    )
+  }
+
+  // ==============================
+  // MENSAJES
+  // ==============================
+
   function mostrarMensaje(
     texto: string,
     tipo: 'success' | 'danger'
@@ -108,6 +265,10 @@ export default function Dashboard() {
     }, 4000)
   }
 
+  // ==============================
+  // FORMULARIO
+  // ==============================
+
   function limpiarFormulario() {
     setNombre('')
     setDescripcion('')
@@ -115,6 +276,8 @@ export default function Dashboard() {
     setEtiquetas('')
     setArchivo(null)
     setVercelProjectId('')
+    setUrlProyecto('')
+    setProgreso(0)
   }
 
   function cerrarModal() {
@@ -124,7 +287,9 @@ export default function Dashboard() {
     limpiarFormulario()
   }
 
-  async function manejarSubida(e: React.FormEvent) {
+  async function manejarSubida(
+    e: React.FormEvent
+  ) {
     e.preventDefault()
 
     if (!nombre.trim()) {
@@ -133,6 +298,15 @@ export default function Dashboard() {
         'danger'
       )
 
+      return
+    }
+
+    /*
+     * Si el usuario colocó una URL,
+     * primero guardamos el proyecto por URL.
+     */
+    if (urlProyecto.trim()) {
+      guardarProyectoURL()
       return
     }
 
@@ -147,15 +321,28 @@ export default function Dashboard() {
 
     if (!vercelProjectId) {
       mostrarMensaje(
-        'Selecciona el proyecto desplegado en Vercel.',
+        'Selecciona el proyecto desplegado en Vercel o coloca una URL.',
         'danger'
       )
 
       return
     }
 
+    let intervalo: number | undefined
+
     try {
       setSubiendo(true)
+      setProgreso(10)
+
+      intervalo = window.setInterval(() => {
+        setProgreso((actual) => {
+          if (actual >= 90) {
+            return actual
+          }
+
+          return actual + 5
+        })
+      }, 300)
 
       const listaEtiquetas = etiquetas
         .split(',')
@@ -171,10 +358,20 @@ export default function Dashboard() {
         vercelProjectId
       )
 
+      if (intervalo) {
+        window.clearInterval(intervalo)
+      }
+
+      setProgreso(100)
+
       setProyectos((actuales) => [
         nuevoProyecto,
         ...actuales,
       ])
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, 500)
+      )
 
       setMostrarModal(false)
 
@@ -185,6 +382,12 @@ export default function Dashboard() {
         'success'
       )
     } catch (error) {
+      if (intervalo) {
+        window.clearInterval(intervalo)
+      }
+
+      setProgreso(0)
+
       mostrarMensaje(
         error instanceof Error
           ? error.message
@@ -192,11 +395,21 @@ export default function Dashboard() {
         'danger'
       )
     } finally {
+      if (intervalo) {
+        window.clearInterval(intervalo)
+      }
+
       setSubiendo(false)
     }
   }
 
-  async function manejarAbrir(proyecto: Proyecto) {
+  // ==============================
+  // ABRIR PROYECTO VERCEL
+  // ==============================
+
+  async function manejarAbrir(
+    proyecto: Proyecto
+  ) {
     if (!proyecto.vercel_project_id) {
       mostrarMensaje(
         'Este proyecto no tiene un proyecto de Vercel vinculado.',
@@ -347,6 +560,10 @@ export default function Dashboard() {
     }
   }
 
+  // ==============================
+  // UTILIDADES
+  // ==============================
+
   function formatearTamano(bytes: number) {
     if (bytes < 1024) {
       return `${bytes} B`
@@ -398,6 +615,28 @@ export default function Dashboard() {
       return contenido.includes(texto)
     })
   }, [proyectos, busqueda])
+
+  const proyectosURLFiltrados = useMemo(() => {
+    const texto = busqueda.toLowerCase().trim()
+
+    if (!texto) {
+      return proyectosURL
+    }
+
+    return proyectosURL.filter((proyecto) => {
+      const contenido = [
+        proyecto.nombre,
+        proyecto.descripcion,
+        proyecto.categoria,
+        proyecto.url,
+        ...proyecto.etiquetas,
+      ]
+        .join(' ')
+        .toLowerCase()
+
+      return contenido.includes(texto)
+    })
+  }, [proyectosURL, busqueda])
 
   const almacenamientoUsado = useMemo(() => {
     return proyectos.reduce(
@@ -473,6 +712,8 @@ export default function Dashboard() {
   return (
     <div className="cloud-dashboard">
 
+      {/* HEADER */}
+
       <header className="cloud-header">
         <div className="cloud-header-inner">
 
@@ -483,7 +724,9 @@ export default function Dashboard() {
             </div>
 
             <div>
-              <strong>CloudProjectHub</strong>
+              <strong>
+                CloudProjectHub
+              </strong>
 
               <span>
                 Gestión de proyectos cloud
@@ -517,7 +760,11 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {/* MAIN */}
+
       <main className="cloud-main">
+
+        {/* HERO */}
 
         <section className="hero">
 
@@ -566,7 +813,9 @@ export default function Dashboard() {
 
               <div>
                 <strong>
-                  {proyectos.length || 0} proyectos
+                  {proyectos.length +
+                    proyectosURL.length}{' '}
+                  proyectos
                 </strong>
 
                 <span>
@@ -598,6 +847,8 @@ export default function Dashboard() {
 
         </section>
 
+        {/* ESTADÍSTICAS */}
+
         <section className="stats-grid">
 
           <div className="stat-card">
@@ -612,7 +863,8 @@ export default function Dashboard() {
               </span>
 
               <strong>
-                {proyectos.length}
+                {proyectos.length +
+                  proyectosURL.length}
               </strong>
 
               <small>
@@ -634,7 +886,8 @@ export default function Dashboard() {
               </span>
 
               <strong>
-                {proyectos.length}
+                {proyectos.length +
+                  proyectosURL.length}
               </strong>
 
               <small>
@@ -681,7 +934,10 @@ export default function Dashboard() {
                 </span>
 
                 <strong>
-                  {porcentajeAlmacenamiento.toFixed(1)}%
+                  {porcentajeAlmacenamiento.toFixed(
+                    1
+                  )}
+                  %
                 </strong>
 
               </div>
@@ -732,6 +988,8 @@ export default function Dashboard() {
 
         </section>
 
+        {/* MENSAJE */}
+
         {mensaje && (
           <div
             className={`message ${tipoMensaje}`}
@@ -739,6 +997,8 @@ export default function Dashboard() {
             {mensaje}
           </div>
         )}
+
+        {/* PROYECTOS ZIP */}
 
         <section className="projects-section">
 
@@ -1005,7 +1265,172 @@ export default function Dashboard() {
 
         </section>
 
+        {/* PROYECTOS POR URL */}
+
+        {proyectosURLFiltrados.length > 0 && (
+
+          <section className="projects-section">
+
+            <div className="projects-toolbar">
+
+              <div>
+
+                <span className="section-label">
+                  PROYECTOS EXTERNOS
+                </span>
+
+                <h3>
+                  Proyectos mediante URL
+                </h3>
+
+                <p>
+                  Proyectos que agregaste mediante
+                  un enlace.
+                </p>
+
+              </div>
+
+            </div>
+
+            <div className="projects-grid">
+
+              {proyectosURLFiltrados.map(
+                (proyecto) => (
+
+                  <article
+                    className="project-card"
+                    key={`url-${proyecto.id}`}
+                  >
+
+                    <div className="project-cover">
+
+                      <div className="project-cover-pattern"></div>
+
+                      <div className="project-file-icon">
+                        <Globe size={32} />
+                      </div>
+
+                      <div className="project-status">
+                        <span></span>
+                        URL
+                      </div>
+
+                    </div>
+
+                    <div className="project-content">
+
+                      <div className="project-top">
+
+                        <span className="project-category">
+                          {proyecto.categoria}
+                        </span>
+
+                        <span className="project-size">
+                          WEB
+                        </span>
+
+                      </div>
+
+                      <h4>
+                        {proyecto.nombre}
+                      </h4>
+
+                      <p>
+                        {proyecto.descripcion ||
+                          'Proyecto desplegado mediante URL.'}
+                      </p>
+
+                      {proyecto.etiquetas.length > 0 && (
+
+                        <div className="project-tags">
+
+                          {proyecto.etiquetas
+                            .slice(0, 3)
+                            .map(
+                              (etiqueta) => (
+                                <span
+                                  key={etiqueta}
+                                >
+                                  {etiqueta}
+                                </span>
+                              )
+                            )}
+
+                        </div>
+
+                      )}
+
+                      <div className="project-meta">
+
+                        <span
+                          title={proyecto.url}
+                          style={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '100%',
+                          }}
+                        >
+                          <Globe size={15} />
+                          {proyecto.url}
+                        </span>
+
+                        <span>
+                          <Calendar
+                            size={15}
+                          />
+
+                          {formatearFecha(
+                            proyecto.created_at
+                          )}
+                        </span>
+
+                      </div>
+
+                      <div className="project-actions">
+
+                        <button
+                          className="project-open"
+                          onClick={() =>
+                            abrirProyectoUrl(
+                              proyecto.url
+                            )
+                          }
+                        >
+                          <Rocket size={16} />
+                          Abrir
+                        </button>
+
+                        <button
+                          className="delete-button"
+                          onClick={() =>
+                            eliminarProyectoUrl(
+                              proyecto.id
+                            )
+                          }
+                          title="Eliminar proyecto"
+                        >
+                          <Trash2 size={17} />
+                        </button>
+
+                      </div>
+
+                    </div>
+
+                  </article>
+
+                )
+              )}
+
+            </div>
+
+          </section>
+
+        )}
+
       </main>
+
+      {/* MODAL */}
 
       {mostrarModal && (
 
@@ -1021,271 +1446,378 @@ export default function Dashboard() {
             }
           >
 
-            <div className="modal-header">
+            {subiendo ? (
 
-              <div>
+              <div className="upload-loading">
 
-                <span className="section-label">
-                  NUEVO PROYECTO
-                </span>
+                <div className="upload-loading-icon">
+                  <Cloud size={32} />
+                </div>
 
                 <h3>
-                  Subir proyecto
+                  Subiendo proyecto...
                 </h3>
 
                 <p>
-                  Guarda un nuevo proyecto en tu
-                  almacenamiento cloud.
+                  Estamos guardando tu proyecto
+                  en la nube.
                 </p>
 
-              </div>
+                <div className="upload-progress-wrapper">
 
-              <button
-                className="modal-close"
-                onClick={cerrarModal}
-              >
-                <X size={20} />
-              </button>
+                  <div className="upload-progress-bar">
 
-            </div>
+                    <div
+                      className="upload-progress-fill"
+                      style={{
+                        width: `${progreso}%`,
+                      }}
+                    />
 
-            <form
-              className="project-form"
-              onSubmit={manejarSubida}
-            >
-
-              <div className="form-group">
-
-                <label>
-                  Nombre del proyecto
-                </label>
-
-                <input
-                  type="text"
-                  placeholder="Ej. Sistema de ventas"
-                  value={nombre}
-                  onChange={(e) =>
-                    setNombre(e.target.value)
-                  }
-                  required
-                />
-
-              </div>
-
-              <div className="form-group">
-
-                <label>
-                  Descripción
-                </label>
-
-                <textarea
-                  placeholder="Describe brevemente tu proyecto..."
-                  value={descripcion}
-                  onChange={(e) =>
-                    setDescripcion(
-                      e.target.value
-                    )
-                  }
-                  rows={3}
-                />
-
-              </div>
-
-              <div className="form-row">
-
-                <div className="form-group">
-
-                  <label>
-                    Categoría
-                  </label>
-
-                  <select
-                    value={categoria}
-                    onChange={(e) =>
-                      setCategoria(
-                        e.target.value
-                      )
-                    }
-                  >
-                    <option value="Web">
-                      Web
-                    </option>
-
-                    <option value="Backend">
-                      Backend
-                    </option>
-
-                    <option value="Frontend">
-                      Frontend
-                    </option>
-
-                    <option value="Mobile">
-                      Mobile
-                    </option>
-
-                    <option value="Cloud">
-                      Cloud
-                    </option>
-
-                    <option value="Full Stack">
-                      Full Stack
-                    </option>
-
-                    <option value="Otros">
-                      Otros
-                    </option>
-
-                  </select>
-
-                </div>
-
-                <div className="form-group">
-
-                  <label>
-                    Etiquetas
-                  </label>
-
-                  <input
-                    type="text"
-                    placeholder="React, Node, Supabase"
-                    value={etiquetas}
-                    onChange={(e) =>
-                      setEtiquetas(
-                        e.target.value
-                      )
-                    }
-                  />
-
-                  <small>
-                    Separa las etiquetas con comas.
-                  </small>
-
-                </div>
-
-              </div>
-
-              <div className="form-group">
-
-                <label>
-                  Proyecto desplegado en Vercel
-                </label>
-
-                <select
-                  value={vercelProjectId}
-                  onChange={(e) =>
-                    setVercelProjectId(
-                      e.target.value
-                    )
-                  }
-                  required
-                >
-
-                  <option value="">
-                    {cargandoVercel
-                      ? 'Cargando proyectos de Vercel...'
-                      : 'Selecciona un proyecto'}
-                  </option>
-
-                  {proyectosVercel.map(
-                    (proyectoVercel) => (
-                      <option
-                        key={proyectoVercel.id}
-                        value={
-                          proyectoVercel.id
-                        }
-                      >
-                        {proyectoVercel.name}
-                      </option>
-                    )
-                  )}
-
-                </select>
-
-                <small>
-                  Selecciona el proyecto que ya
-                  desplegaste en Vercel.
-                </small>
-
-              </div>
-
-              <div className="form-group">
-
-                <label>
-                  Archivo ZIP
-                </label>
-
-                <label className="upload-area">
-
-                  <Upload size={27} />
+                  </div>
 
                   <strong>
-                    {archivo
-                      ? archivo.name
-                      : 'Selecciona tu proyecto ZIP'}
+                    {progreso}%
                   </strong>
 
-                  <span>
-                    {archivo
-                      ? `${formatearTamano(
-                          archivo.size
-                        )} seleccionado`
-                      : 'Máximo 50 MB'}
-                  </span>
+                </div>
 
-                  <input
-                    type="file"
-                    accept=".zip,application/zip,application/x-zip-compressed"
-                    onChange={(e) =>
-                      setArchivo(
-                        e.target.files?.[0] ||
-                          null
-                      )
-                    }
-                    required
-                  />
-
-                </label>
+                <span className="upload-loading-info">
+                  {progreso >= 100
+                    ? '¡Proyecto subido correctamente!'
+                    : 'No cierres esta ventana mientras se completa la carga.'}
+                </span>
 
               </div>
 
-              <div className="modal-actions">
+            ) : (
 
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={cerrarModal}
-                  disabled={subiendo}
+              <>
+
+                <div className="modal-header">
+
+                  <div>
+
+                    <span className="section-label">
+                      NUEVO PROYECTO
+                    </span>
+
+                    <h3>
+                      Subir proyecto
+                    </h3>
+
+                    <p>
+                      Guarda un nuevo proyecto en tu
+                      almacenamiento cloud.
+                    </p>
+
+                  </div>
+
+                  <button
+                    className="modal-close"
+                    onClick={cerrarModal}
+                    type="button"
+                  >
+                    <X size={20} />
+                  </button>
+
+                </div>
+
+                <form
+                  className="project-form"
+                  onSubmit={manejarSubida}
                 >
-                  Cancelar
-                </button>
 
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={
-                    subiendo ||
-                    cargandoVercel ||
-                    proyectosVercel.length === 0
-                  }
-                >
+                  <div className="form-group">
 
-                  {subiendo ? (
-                    <>
-                      <Cloud size={18} />
-                      Subiendo...
-                    </>
-                  ) : (
-                    <>
-                      <Upload size={18} />
-                      Guardar proyecto
-                    </>
-                  )}
+                    <label>
+                      Nombre del proyecto
+                    </label>
 
-                </button>
+                    <input
+                      type="text"
+                      placeholder="Ej. Sistema de ventas"
+                      value={nombre}
+                      onChange={(e) =>
+                        setNombre(e.target.value)
+                      }
+                      required
+                    />
 
-              </div>
+                  </div>
 
-            </form>
+                  <div className="form-group">
+
+                    <label>
+                      Descripción
+                    </label>
+
+                    <textarea
+                      placeholder="Describe brevemente tu proyecto..."
+                      value={descripcion}
+                      onChange={(e) =>
+                        setDescripcion(
+                          e.target.value
+                        )
+                      }
+                      rows={3}
+                    />
+
+                  </div>
+
+                  <div className="form-row">
+
+                    <div className="form-group">
+
+                      <label>
+                        Categoría
+                      </label>
+
+                      <select
+                        value={categoria}
+                        onChange={(e) =>
+                          setCategoria(
+                            e.target.value
+                          )
+                        }
+                      >
+
+                        <option value="Web">
+                          Web
+                        </option>
+
+                        <option value="Backend">
+                          Backend
+                        </option>
+
+                        <option value="Frontend">
+                          Frontend
+                        </option>
+
+                        <option value="Mobile">
+                          Mobile
+                        </option>
+
+                        <option value="Cloud">
+                          Cloud
+                        </option>
+
+                        <option value="Full Stack">
+                          Full Stack
+                        </option>
+
+                        <option value="Otros">
+                          Otros
+                        </option>
+
+                      </select>
+
+                    </div>
+
+                    <div className="form-group">
+
+                      <label>
+                        Etiquetas
+                      </label>
+
+                      <input
+                        type="text"
+                        placeholder="React, Node, Supabase"
+                        value={etiquetas}
+                        onChange={(e) =>
+                          setEtiquetas(
+                            e.target.value
+                          )
+                        }
+                      />
+
+                      <small>
+                        Separa las etiquetas con comas.
+                      </small>
+
+                    </div>
+
+                  </div>
+
+                  {/* =========================================
+                      VERCEL
+                      ========================================= */}
+
+                  <div className="form-group">
+
+                    <label>
+                      Proyecto desplegado en Vercel
+                    </label>
+
+                    <select
+                      value={vercelProjectId}
+                      onChange={(e) =>
+                        setVercelProjectId(
+                          e.target.value
+                        )
+                      }
+                    >
+
+                      <option value="">
+                        {cargandoVercel
+                          ? 'Cargando proyectos de Vercel...'
+                          : 'Selecciona un proyecto'}
+                      </option>
+
+                      {proyectosVercel.map(
+                        (proyectoVercel) => (
+
+                          <option
+                            key={proyectoVercel.id}
+                            value={
+                              proyectoVercel.id
+                            }
+                          >
+                            {proyectoVercel.name}
+                          </option>
+
+                        )
+                      )}
+
+                    </select>
+
+                  </div>
+
+                  {/* =========================================
+                      SOLO URL
+                      ========================================= */}
+
+                  <div className="form-group">
+
+                    <label>
+                      URL del proyecto
+                    </label>
+
+                    <div
+                      style={{
+                        position: 'relative',
+                      }}
+                    >
+
+                      <Globe
+                        size={18}
+                        style={{
+                          position: 'absolute',
+                          left: '12px',
+                          top: '50%',
+                          transform:
+                            'translateY(-50%)',
+                          color: '#64748b',
+                        }}
+                      />
+
+                      <input
+                        type="url"
+                        placeholder="https://mi-proyecto.vercel.app"
+                        value={urlProyecto}
+                        onChange={(e) =>
+                          setUrlProyecto(
+                            e.target.value
+                          )
+                        }
+                        style={{
+                          paddingLeft: '40px',
+                        }}
+                      />
+
+                    </div>
+
+                    <small>
+                      Coloca aquí la URL si quieres
+                      guardar el proyecto mediante un
+                      enlace.
+                    </small>
+
+                  </div>
+
+                  {/* =========================================
+                      ARCHIVO ZIP
+                      ========================================= */}
+
+                  <div className="form-group">
+
+                    <label>
+                      Archivo ZIP
+                    </label>
+
+                    <label className="upload-area">
+
+                      <Upload size={27} />
+
+                      <strong>
+                        {archivo
+                          ? archivo.name
+                          : 'Selecciona tu proyecto ZIP'}
+                      </strong>
+
+                      <span>
+                        {archivo
+                          ? `${formatearTamano(
+                              archivo.size
+                            )} seleccionado`
+                          : 'Máximo 50 MB'}
+                      </span>
+
+                      <input
+                        type="file"
+                        accept=".zip,application/zip,application/x-zip-compressed"
+                        onChange={(e) =>
+                          setArchivo(
+                            e.target.files?.[0] ||
+                              null
+                          )
+                        }
+                      />
+
+                    </label>
+
+                  </div>
+
+                  <div className="modal-actions">
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={cerrarModal}
+                    >
+                      Cancelar
+                    </button>
+
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={
+                        subiendo ||
+                        (!urlProyecto.trim() &&
+                          (cargandoVercel ||
+                            proyectosVercel.length === 0))
+                      }
+                    >
+                      {urlProyecto.trim() ? (
+                        <>
+                          <Globe size={18} />
+                          Guardar URL
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={18} />
+                          Guardar proyecto
+                        </>
+                      )}
+                    </button>
+
+                  </div>
+
+                </form>
+
+              </>
+
+            )}
 
           </div>
 
